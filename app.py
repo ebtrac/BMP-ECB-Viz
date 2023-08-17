@@ -24,6 +24,8 @@ class App(tk.Tk):
         for cls in CipherAlgorithm.__subclasses__():
             if cls is not BlockCipherAlgorithm:
                 self.algodict[cls.__name__] = cls
+        # remove ARC4 because it doesnt support ECB
+        self.algodict.pop('ARC4')
         
         # menu bar
         menubar = tk.Menu(self)
@@ -87,6 +89,23 @@ class App(tk.Tk):
         self.randkeysize_combobox.grid(row=3,column=1, sticky='nw')
         randkeybtn.grid(row=3, column=2, )
         
+        # block size selection controls and labels
+        blocksizelbl = ttk.Label(self.control_frame, text='Block Size')
+        self.blocksizevar = tk.StringVar()
+        self.blocksize_combobox = ttk.Combobox(self.control_frame, textvariable=self.blocksizevar, state='readonly')
+        # place blocksize controls and labels
+        blocksizelbl.grid(row=4, column=0, sticky='nw')
+        self.blocksize_combobox.grid(row=4, column=1, sticky='nw')
+        
+        # place nonce input controls
+        noncelbl = ttk.Label(self.control_frame, text='Nonce')
+        self.noncevar = tk.StringVar()
+        self.nonce_entry = ttk.Entry(self.control_frame, textvariable=self.noncevar, width=32)
+        randnoncebtn = ttk.Button(self.control_frame, text='Random Nonce', command=self.generate_random_nonce)
+        noncelbl.grid(row=5, column=0, sticky='nw')
+        self.nonce_entry.grid(row=6, column=0, columnspan=2, padx=5, sticky='nw')
+        randnoncebtn.grid(row=6, column=2, sticky='nw')
+        
         # place the control frame
         self.control_frame.grid(row=0, column=0, sticky='nsw')
         
@@ -145,7 +164,12 @@ class App(tk.Tk):
         
         outputfile.close()
 
-    def generate_random_key(self):
+    def generate_random_nonce(self, *args):
+        nonce = os.urandom(16) # 16 bytes, 128 bits
+        self.nonce_entry.delete(0, tk.END)
+        self.nonce_entry.insert(0, nonce.hex())
+
+    def generate_random_key(self, *args):
         if self.keysizevar.get() == '':
             return
         
@@ -172,6 +196,19 @@ class App(tk.Tk):
         self.pil_img_out = Image.frombytes(mode='RGB', size=self.pil_img_in.size, data=outputfilebytes).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
             
     def algorithm_update(self, *args):
+        event = None
+        if args:
+            event = args[0]
+        
+        # check the textbox modified flag
+        if self.key_text.edit_modified() == True:
+            self.key_text.edit_modified(False)
+        else:
+            if event:
+                if 'text' in event.widget.widgetName:
+                    return
+        print(args[0])
+        
         if self.algorithmvar.get() == 'None':
             self.randkeysize_combobox.config(values=[])
             self.randkeysize_combobox.set('')
@@ -179,9 +216,7 @@ class App(tk.Tk):
             self.set_img()
             return
         
-        # check the textbox modified flag
-        if self.key_text.edit_modified() == True:
-            self.key_text.edit_modified(False)
+        
         
         # TODO based on the algorithmvar, use appropriate block sizes, key sizes, etc
         AlgClass = self.algodict[self.algorithmvar.get()]
