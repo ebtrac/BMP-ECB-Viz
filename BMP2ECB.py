@@ -6,13 +6,13 @@ from cryptography.hazmat.primitives.ciphers import (
 
 
 class BMP2ECB:
-    def __init__(self, algorithm: BlockCipherAlgorithm | CipherAlgorithm | None = None, mode: modes.Mode() = modes.ECB()):
+    def __init__(self, algorithm: CipherAlgorithm | None = None, mode: modes.Mode = modes.ECB()):
         self.algorithm = algorithm
         self.mode = mode
         self.cipher = None
         self.encryptor = None
         
-        if issubclass(self.algorithm, (BlockCipherAlgorithm, CipherAlgorithm)) and issubclass(self.mode, modes.Mode):
+        if self.algorithm is not None:
             self.set_algorithm(self.algorithm, self.mode)
         
     def __getheader(self, data : bytes, n=54) -> bytes:
@@ -27,7 +27,7 @@ class BMP2ECB:
         ct[:headerlen] = header
         return bytes(ct)
     
-    def set_algorithm(self, algorithm: BlockCipherAlgorithm | CipherAlgorithm, mode: modes.Mode() = modes.ECB()):
+    def set_algorithm(self, algorithm: CipherAlgorithm, mode: modes.Mode = modes.ECB()):
         self.algorithm = algorithm
         self.mode = mode
         self.cipher = Cipher(self.algorithm, self.mode)
