@@ -93,17 +93,23 @@ class App(tk.Tk):
         self.randkeysize_combobox.grid(row=3,column=1, sticky='nw')
         randkeybtn.grid(row=3, column=2, )
         
+        # place increment and decrement key buttons
+        inckey_btn = ttk.Button(self.control_frame, text='Key++', command=self.increment_key)
+        deckey_btn = ttk.Button(self.control_frame, text='Key--', command=self.decrement_key)
+        inckey_btn.grid(row=4, column=0, sticky='nw')
+        deckey_btn.grid(row=4, column=1, sticky='nw')
+        
         # block size selection controls and labels
-        blocksizelbl = ttk.Label(self.control_frame, text='Block Size')
+        # blocksizelbl = ttk.Label(self.control_frame, text='Block Size')
         self.blocksizevar = tk.StringVar()
         self.blocksize_spinbox = ttk.Spinbox(self.control_frame, from_=1.0, to=1024.0, textvariable=self.blocksizevar)
-        # place blocksize controls and labels
-        blocksizelbl.grid(row=4, column=0, sticky='nw')
-        self.blocksize_spinbox.grid(row=4, column=1, sticky='nw')
+        # # place blocksize controls and labels
+        # blocksizelbl.grid(row=4, column=0, sticky='nw')
+        # self.blocksize_spinbox.grid(row=4, column=1, sticky='nw')
         
-        self.blocksize_spinbox.bind('<KeyRelease>', self.blocksize_changed)
-        self.blocksize_spinbox.bind('<<Decrement>>', self.blocksize_changed)
-        self.blocksize_spinbox.bind('<<Increment>>', self.blocksize_changed)
+        # self.blocksize_spinbox.bind('<KeyRelease>', self.blocksize_changed)
+        # self.blocksize_spinbox.bind('<<Decrement>>', self.blocksize_changed)
+        # self.blocksize_spinbox.bind('<<Increment>>', self.blocksize_changed)
         
         # place nonce input controls
         noncelbl = ttk.Label(self.control_frame, text='Nonce')
@@ -179,6 +185,32 @@ class App(tk.Tk):
         
         outputfile.close()
 
+    def increment_key(self, *args):
+        if self._key_exists():
+            key = self._key_wrangle()
+            keyint = int(key, 16) + 1
+            newkey = hex(keyint)[2:]
+            if len(newkey) > len(key):
+                newkey = newkey[1:]
+            elif len(newkey) < len(key):
+                newkey = '0'*(len(key) - len(newkey)) + newkey
+            self.key_text.delete(1.0, tk.END)
+            self.key_text.insert(1.0, newkey)
+
+    def decrement_key(self, *args):
+        if self._key_exists():
+            key = self._key_wrangle()
+            keyint = int(key, 16) - 1
+            if keyint < 0:
+                keyint = 2**int(self.algo.key_size) - 1
+            newkey = hex(keyint)[2:]
+            if len(newkey) > len(key):
+                newkey = newkey[1:]
+            elif len(newkey) < len(key):
+                newkey = '0'*(len(key) - len(newkey)) + newkey
+            self.key_text.delete(1.0, tk.END)
+            self.key_text.insert(1.0, newkey)
+
     def generate_random_nonce(self, *args):
         nonce = os.urandom(16) # 16 bytes, 128 bits
         self.nonce_entry.delete(0, tk.END)
@@ -209,15 +241,16 @@ class App(tk.Tk):
             return
 
         # handle padding of input to be multiple of block size
-        paddedinputfilebytes = bytearray(self.inputfilebytes)
-        try:
-            blocksize = int(self.blocksizevar.get())
-        except ValueError:
-            blocksize = 8
-        while len(paddedinputfilebytes) % blocksize != 0:
-            paddedinputfilebytes.append(0)
-        paddedinputfilebytes = bytes(paddedinputfilebytes)
-        outputfilebytes = self.converter.convert(paddedinputfilebytes)
+        # paddedinputfilebytes = bytearray(self.inputfilebytes)
+        # try:
+        #     blocksize = int(self.blocksizevar.get())
+        # except ValueError:
+        #     blocksize = 8
+        # while len(paddedinputfilebytes) % blocksize != 0:
+        #     paddedinputfilebytes.append(0)
+        # paddedinputfilebytes = bytes(paddedinputfilebytes)
+        # outputfilebytes = self.converter.convert(paddedinputfilebytes)
+        outputfilebytes = self.converter.convert(self.inputfilebytes)
         self.pil_img_out = Image.frombytes(mode='RGB', size=self.pil_img_in.size, data=outputfilebytes).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     
     def blocksize_changed(self, *args):
