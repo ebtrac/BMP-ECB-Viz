@@ -5,6 +5,7 @@ from tkinter import ttk, filedialog
 from PIL import Image, ImageTk
 import os
 import math
+import re
 from BMP2ECB import BMP2ECB
 
 class App(tk.Tk):
@@ -26,6 +27,9 @@ class App(tk.Tk):
                 self.algodict[cls.__name__] = cls
         # remove ARC4 because it doesnt support ECB
         self.algodict.pop('ARC4')
+        
+        self.algo = None
+        self.algoclass = None
         
         # menu bar
         menubar = tk.Menu(self)
@@ -64,14 +68,14 @@ class App(tk.Tk):
         algorithm_combobox.grid(row=0, column=1, sticky='nw')
         
         # bind function to fire when algorithm changes
-        algorithm_combobox.bind('<<ComboboxSelected>>', self.algorithm_update)
+        algorithm_combobox.bind('<<ComboboxSelected>>', self.algorithm_combobox_changed)
         
         # key label and text
         keylbl = ttk.Label(self.control_frame, text='Key')
         self.key_text = tk.Text(self.control_frame, wrap='char', height=3, width=32)
         
         # bind function to fire when the key changes
-        self.key_text.bind("<<Modified>>", self.algorithm_update)
+        self.key_text.bind("<<Modified>>", self.key_changed)
         
         # place key label and text
         keylbl.grid(row=1, column=0, sticky='nw')
@@ -92,19 +96,30 @@ class App(tk.Tk):
         # block size selection controls and labels
         blocksizelbl = ttk.Label(self.control_frame, text='Block Size')
         self.blocksizevar = tk.StringVar()
-        self.blocksize_combobox = ttk.Combobox(self.control_frame, textvariable=self.blocksizevar, state='readonly')
+        self.blocksize_spinbox = ttk.Spinbox(self.control_frame, from_=1.0, to=1024.0, textvariable=self.blocksizevar)
         # place blocksize controls and labels
         blocksizelbl.grid(row=4, column=0, sticky='nw')
-        self.blocksize_combobox.grid(row=4, column=1, sticky='nw')
+        self.blocksize_spinbox.grid(row=4, column=1, sticky='nw')
+        
+        self.blocksize_spinbox.bind('<KeyRelease>', self.blocksize_changed)
+        self.blocksize_spinbox.bind('<<Decrement>>', self.blocksize_changed)
+        self.blocksize_spinbox.bind('<<Increment>>', self.blocksize_changed)
         
         # place nonce input controls
         noncelbl = ttk.Label(self.control_frame, text='Nonce')
         self.noncevar = tk.StringVar()
         self.nonce_entry = ttk.Entry(self.control_frame, textvariable=self.noncevar, width=32)
-        randnoncebtn = ttk.Button(self.control_frame, text='Random Nonce', command=self.generate_random_nonce)
+        self.randnoncebtn = ttk.Button(self.control_frame, text='Random Nonce', command=self.generate_random_nonce)
         noncelbl.grid(row=5, column=0, sticky='nw')
         self.nonce_entry.grid(row=6, column=0, columnspan=2, padx=5, sticky='nw')
-        randnoncebtn.grid(row=6, column=2, sticky='nw')
+        self.randnoncebtn.grid(row=6, column=2, sticky='nw')
+        
+        # DEBUG place debug controls
+        self.debug_actualkeyvar = tk.StringVar()
+        debug_actualkey_entry = ttk.Entry(self.control_frame, textvariable=self.debug_actualkeyvar, width=48, state='readonly')
+        debug_refreshactualkey = ttk.Button(self.control_frame, text='refresh actual key', command=self.debug_refreshactualkey)
+        debug_actualkey_entry.grid(row=10, column=0, columnspan=2, sticky='nw')
+        debug_refreshactualkey.grid(row=11, column=0)
         
         # place the control frame
         self.control_frame.grid(row=0, column=0, sticky='nsw')
@@ -192,9 +207,109 @@ class App(tk.Tk):
         if self.algorithmvar.get() == 'None':
             self.pil_img_out = self.pil_img_in.copy()
             return
-        outputfilebytes = self.converter.convert(self.inputfilebytes)
+
+        # handle padding of input to be multiple of block size
+        paddedinputfilebytes = bytearray(self.inputfilebytes)
+        try:
+            blocksize = int(self.blocksizevar.get())
+        except ValueError:
+            blocksize = 8
+        while len(paddedinputfilebytes) % blocksize != 0:
+            paddedinputfilebytes.append(0)
+        paddedinputfilebytes = bytes(paddedinputfilebytes)
+        outputfilebytes = self.converter.convert(paddedinputfilebytes)
         self.pil_img_out = Image.frombytes(mode='RGB', size=self.pil_img_in.size, data=outputfilebytes).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    
+    def blocksize_changed(self, *args):
+        print('blocksize changed', self.blocksizevar.get())
+        if self._key_exists():
+            if self.blocksizevar.get() != '' and self.blocksizevar.get().isnumeric():
+                self.algo.block_size = int(self.blocksizevar.get())
+                self.converter.set_algorithm(self.algo)
+                self.process_img()
+                self.set_img()
+    
+    def key_changed(self, *args):
+        event = None
+        if args:
+            event = args[0]
+        
+        # check the textbox modified flag
+        if self.key_text.edit_modified() == True:
+            self.key_text.edit_modified(False)
+        else:
+            if event:
+                if 'text' in event.widget.widgetName:
+                    return
+    
+        # if a key exists, instantiate the algorithm with the key
+        if self._key_exists():
+            if self.algoclass == algorithms.ChaCha20:
+                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()), bytes.fromhex(self._nonce_wrangle()))
+            else:
+                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
+            self.converter.set_algorithm(self.algo)
+            # DEBUG
+            self.debug_refreshactualkey()
+            self.process_img()
+            self.set_img()
+    
+    def algorithm_combobox_changed(self, *args):
+        """fires when the algorithm combobox has been selected/modified"""
+        new_algo = self.algorithmvar.get()
+        if new_algo == 'None':
+            self.randkeysize_combobox.config(values=[])
+            self.randkeysize_combobox.set('')
+            self.process_img()
+            self.set_img()
+            return
+        
+        NewAlgoClass = self.algodict[new_algo]
+        
+        # return if the current algorithm matches the one that is selected
+        if NewAlgoClass == self.algoclass:
+            return
+        
+        # store the new class
+        self.algoclass = NewAlgoClass
+        
+        # update keysizes
+        key_sizes = list(NewAlgoClass.key_sizes)
+        key_sizes.sort() # sort values ascending
+        key_sizes_str = [str(size) for size in key_sizes]
+        self.randkeysize_combobox.config(values=key_sizes_str)
+        # self.randkeysize_combobox.current(0) # select first value
+        
+        if issubclass(NewAlgoClass, BlockCipherAlgorithm):
+            """handle block cipher settings configuration"""
+            self.blocksize_spinbox.config(state='normal')
+            # set to default value for the algorithm
+            self.blocksizevar.set(str(NewAlgoClass.block_size))
+        else:
+            """disable block cipher settings"""
+            self.blocksize_spinbox.config(state='disabled')
+        
+        # enable or disable the nonce entry and button
+        if NewAlgoClass == algorithms.ChaCha20:
+            self.nonce_entry.config(state='normal')
+            self.randnoncebtn.config(state='normal')
+        else:
+            self.nonce_entry.config(state='disabled')
+            self.randnoncebtn.config(state='disabled')
             
+        
+        # if a key exists, instantiate the algorithm with the key
+        if self._key_exists():
+            if self.algoclass == algorithms.ChaCha20:
+                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()), bytes.fromhex(self._nonce_wrangle()))
+            else:
+                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
+            self.converter.set_algorithm(self.algo)
+            # DEBUG
+            self.debug_refreshactualkey()
+            self.process_img()
+            self.set_img()
+                   
     def algorithm_update(self, *args):
         event = None
         if args:
@@ -268,6 +383,72 @@ class App(tk.Tk):
             self.converter.set_algorithm(algo)
             self.process_img()
         self.set_img()
+    
+    def debug_refreshactualkey(self, *args):
+        if self._key_exists():
+            self.debug_actualkeyvar.set(self._key_wrangle())
+    
+    def _nonce_wrangle(self) -> str:
+        """ returns a nonce from the text """
+    
+    def _key_wrangle(self) -> str:
+        """ returns a key from the text """
+        keystr = self.key_text.get(1.0, tk.END)
+        try:
+            keysize = int(self.keysizevar.get())
+            keysize = int(keysize/8) * 2 # number of hex characters the key must be
+        except ValueError:
+            # the keysize has not been selected, get default size
+            keysize = int(list(self.algodict[self.algorithmvar.get()].key_sizes)[0]/8) * 2
+            
+        # remove newlines
+        keystr = keystr.replace('\n', '')
+        
+        if keystr == '':
+            return keysize*'0'
+        
+        # insert a 0 if the length of the key is odd
+        if len(keystr) % 2 != 0:
+            keystr = '0'+keystr
+        
+        # attempt to interpret as a hex value
+        try:
+            key = bytes.fromhex(keystr)
+        except ValueError: # cant interpret as hex
+            # strip all whitespace
+            keystr = re.sub('[\s*]', '', keystr)
+                
+            # convert all nonhex chars to their hex representations
+            newkeystr = list(keystr)
+            nonhexiter = re.finditer('[^a-fA-F0-9]', keystr)
+            # create a list of the indices for each match
+            matchind = [m.start() for m in nonhexiter]
+            # reverse it so we can modify the keystr from end to beginning, preserving validity of lower indices
+            matchind.reverse()
+            for i in matchind:
+                hexstr = hex(ord(keystr[i]))[2:] # remove the leading 0x
+                # insert a 0 if the length is odd
+                if len(hexstr) % 2 != 0:
+                    hexstr = '0' + hexstr
+                
+                # remove the non-hex value from the newkeystr
+                newkeystr.pop(i)
+                # insert the hex value in place of the non-hex value
+                newkeystr.insert(i, hexstr)
+            # convert the newkeystr back to a string
+            keystr = ''.join(newkeystr)
+        
+        if len(keystr) < keysize:
+            # prepend zeros
+            return '0'*(keysize - len(keystr)) + keystr
+        elif len(keystr) > keysize:
+            return keystr[(len(keystr) - keysize):]
+        else:
+            return keystr
+                
+    def _key_exists(self):
+        """ returns true if text exists in the key_text widget """
+        return (self.key_text.count(1.0, tk.END, 'chars')[0] > 1)
         
 if __name__ == '__main__':
     app = App()
