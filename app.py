@@ -93,7 +93,7 @@ class App(tk.Tk):
         self.key_text.grid(row=2,column=0, columnspan=3, padx=5, pady=5, sticky='ns')
         
         # random key generator button
-        self.randkeybtn = ttk.Button(self.control_frame, text='Random Key', command=self.generate_random_key, state='disabled')
+        self.randkey_btn = ttk.Button(self.control_frame, text='Random Key', command=self.generate_random_key, state='disabled')
         # random key size combobox
         randkeysizelbl = ttk.Label(self.control_frame, text='Key Size (bits)')
         self.keysizevar = tk.StringVar()
@@ -104,7 +104,7 @@ class App(tk.Tk):
         # place random key generator controls and labels
         randkeysizelbl.grid(row=3, column=0, sticky='nw')
         self.keysize_combobox.grid(row=3,column=1, sticky='nw')
-        self.randkeybtn.grid(row=3, column=2, )
+        self.randkey_btn.grid(row=3, column=2, )
         
         # place increment and decrement key buttons
         self.inckey_btn = ttk.Button(self.control_frame, text='Key++', command=self.increment_key, state='disabled')
@@ -120,7 +120,7 @@ class App(tk.Tk):
         self.debug_actualkeyvar = tk.StringVar()
         ttk.Label(self.control_frame, text='Actual Key').grid(row=9, column=0, sticky='nw')
         debug_actualkey_entry = ttk.Entry(self.control_frame, textvariable=self.debug_actualkeyvar, width=48, state='disabled')
-        debug_refreshactualkey = ttk.Button(self.control_frame, text='refresh actual key', command=self.debug_refreshactualkey, state='disabled')
+        debug_refreshactualkey_btn = ttk.Button(self.control_frame, text='refresh actual key', command=self.debug_refreshactualkey, state='disabled')
         debug_actualkey_entry.grid(row=10, column=0, columnspan=3, sticky='nw')
         # debug_refreshactualkey.grid(row=11, column=0)
         
@@ -347,7 +347,7 @@ class App(tk.Tk):
             self.keysize_combobox.config(state=ctlstate)
             self.deckey_btn.config(state=ctlstate)
             self.inckey_btn.config(state=ctlstate)
-            self.randkeybtn.config(state=ctlstate)
+            self.randkey_btn.config(state=ctlstate)
             
             self.process_img()
             self.set_img()
@@ -359,7 +359,7 @@ class App(tk.Tk):
         self.key_text.config(state=ctlstate)
         self.deckey_btn.config(state=ctlstate)
         self.inckey_btn.config(state=ctlstate)
-        self.randkeybtn.config(state=ctlstate)
+        self.randkey_btn.config(state=ctlstate)
         
         NewAlgoClass = self.algodict[new_algo]
         
