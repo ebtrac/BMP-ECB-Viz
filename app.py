@@ -27,6 +27,12 @@ class App(tk.Tk):
                 self.algodict[cls.__name__] = cls
         # remove ARC4 because it doesnt support ECB
         self.algodict.pop('ARC4')
+        # remove ChaCha20 because it doesnt support ECB
+        self.algodict.pop('ChaCha20')
+        
+        # contains the selected keysizes for each of the algorithms
+        self.keysize_settings = dict()
+               
         
         self.algo = None
         self.algoclass = None
@@ -98,35 +104,7 @@ class App(tk.Tk):
         deckey_btn = ttk.Button(self.control_frame, text='Key--', command=self.decrement_key, state='disabled')
         inckey_btn.grid(row=4, column=0, sticky='nw')
         deckey_btn.grid(row=4, column=1, sticky='nw')
-        
-        # block size selection controls and labels
-        # blocksizelbl = ttk.Label(self.control_frame, text='Block Size')
-        self.blocksizevar = tk.StringVar()
-        self.blocksize_spinbox = ttk.Spinbox(self.control_frame, from_=1.0, to=1024.0, textvariable=self.blocksizevar)
-        # # place blocksize controls and labels
-        # blocksizelbl.grid(row=4, column=0, sticky='nw')
-        # self.blocksize_spinbox.grid(row=4, column=1, sticky='nw')
-        
-        # self.blocksize_spinbox.bind('<KeyRelease>', self.blocksize_changed)
-        # self.blocksize_spinbox.bind('<<Decrement>>', self.blocksize_changed)
-        # self.blocksize_spinbox.bind('<<Increment>>', self.blocksize_changed)
-        
-        # place nonce input controls
-        noncelbl = ttk.Label(self.control_frame, text='Nonce')
-        self.noncevar = tk.StringVar()
-        self.nonce_text = tk.Text(self.control_frame, width=32, height=1, state='disabled')
-        self.randnoncebtn = ttk.Button(self.control_frame, text='Random Nonce', command=self.generate_random_nonce, state='disabled')
-        noncelbl.grid(row=5, column=0, sticky='nw')
-        self.nonce_text.grid(row=6, column=0, columnspan=2, padx=5, sticky='nw')
-        self.randnoncebtn.grid(row=6, column=2, sticky='nw')
-        
-        self.nonce_text.bind('<<Modified>>', self.nonce_changed)
-        
-        self.incnonce_btn = ttk.Button(self.control_frame, text='Nonce++', command=self.increment_nonce, state='disabled')
-        self.decnonce_btn = ttk.Button(self.control_frame, text='Nonce--', command=self.decrement_nonce, state='disabled')
-        self.incnonce_btn.grid(row=7, column=0, sticky='nw')
-        self.decnonce_btn.grid(row=7, column=1, sticky='nw')
-        
+
         # DEBUG place debug controls
         self.debug_actualkeyvar = tk.StringVar()
         ttk.Label(self.control_frame, text='Actual Key').grid(row=9, column=0, sticky='nw')
@@ -222,57 +200,6 @@ class App(tk.Tk):
             self.key_text.delete(1.0, tk.END)
             self.key_text.insert(1.0, newkey)
 
-    def increment_nonce(self, *args):
-        if self._nonce_exists():
-            nonce = self._nonce_wrangle()
-            nonceint = int(nonce, 16) + 1
-            newnonce = hex(nonceint)[2:]
-            if len(newnonce) > len(nonce):
-                newnonce = newnonce[1:]
-            elif len(newnonce) < len(nonce):
-                newnonce = '0'*(len(nonce) - len(newnonce)) + newnonce
-            self.nonce_text.delete(1.0, tk.END)
-            self.nonce_text.insert(1.0, newnonce)
-
-    def decrement_nonce(self, *args):
-        if self._nonce_exists():
-            nonce = self._nonce_wrangle()
-            nonceint = int(nonce, 16) - 1
-            if nonceint < 0:
-                nonceint = 2**128 - 1
-            newnonce = hex(nonceint)[2:]
-            if len(newnonce) > len(nonce):
-                newnonce = newnonce[1:]
-            elif len(newnonce) < len(nonce):
-                newnonce = '0'*(len(nonce) - len(newnonce)) + newnonce
-            self.nonce_text.delete(1.0, tk.END)
-            self.nonce_text.insert(1.0, newnonce)
-    
-    def nonce_changed(self, *args):
-        event = None
-        if args:
-            event = args[0]
-        
-        # check the textbox modified flag
-        if self.key_text.edit_modified() == True:
-            self.key_text.edit_modified(False)
-        else:
-            if event:
-                if 'text' in event.widget.widgetName:
-                    return
-
-        # if a nonce exists, instatiate the algorithm with it
-        if self._nonce_exists() and self._key_exists():
-            self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()), bytes.fromhex(self._nonce_wrangle()))
-            self.converter.set_algorithm(self.algo)
-            self.process_img()
-            self.set_img()
-                    
-    def generate_random_nonce(self, *args):
-        nonce = os.urandom(16) # 16 bytes, 128 bits
-        self.nonce_text.delete(1.0, tk.END)
-        self.nonce_text.insert(1.0, nonce.hex())
-
     def generate_random_key(self, *args):
         if self.keysizevar.get() == '':
             return
@@ -300,15 +227,6 @@ class App(tk.Tk):
         outputfilebytes = self.converter.convert(self.inputfilebytes)
         self.pil_img_out = Image.frombytes(mode='RGB', size=self.pil_img_in.size, data=outputfilebytes).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     
-    def blocksize_changed(self, *args):
-        print('blocksize changed', self.blocksizevar.get())
-        if self._key_exists():
-            if self.blocksizevar.get() != '' and self.blocksizevar.get().isnumeric():
-                self.algo.block_size = int(self.blocksizevar.get())
-                self.converter.set_algorithm(self.algo)
-                self.process_img()
-                self.set_img()
-    
     def key_changed(self, *args):
         event = None
         if args:
@@ -324,13 +242,7 @@ class App(tk.Tk):
     
         # if a key exists, instantiate the algorithm with the key
         if self._key_exists():
-            if self.algoclass == algorithms.ChaCha20:
-                if self._nonce_exists():
-                    self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()), bytes.fromhex(self._nonce_wrangle()))
-                else:
-                    return
-            else:
-                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
+            self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
             self.converter.set_algorithm(self.algo)
             self.process_img()
             self.set_img()
@@ -348,7 +260,6 @@ class App(tk.Tk):
             ctlstate = 'disabled'
             self.key_text.config(state=ctlstate)
             self.randkeysize_combobox.config(state=ctlstate)
-            self.nonce_text.config(state=ctlstate)
             for child in self.control_frame.winfo_children():
                 if 'button' in child.widgetName:
                     child.config(state=ctlstate)
@@ -361,7 +272,6 @@ class App(tk.Tk):
         ctlstate = 'normal'
         self.randkeysize_combobox.config(state='readonly')
         self.key_text.config(state=ctlstate)
-        self.nonce_text.config(state=ctlstate)
         for child in self.control_frame.winfo_children():
             if 'button' in child.widgetName:
                 child.config(state=ctlstate)
@@ -382,170 +292,19 @@ class App(tk.Tk):
         self.randkeysize_combobox.config(values=key_sizes_str)
         # self.randkeysize_combobox.current(0) # select first value
         
-        # if issubclass(NewAlgoClass, BlockCipherAlgorithm):
-        #     """handle block cipher settings configuration"""
-        #     self.blocksize_spinbox.config(state='normal')
-        #     # set to default value for the algorithm
-        #     self.blocksizevar.set(str(NewAlgoClass.block_size))
-        # else:
-        #     """disable block cipher settings"""
-        #     self.blocksize_spinbox.config(state='disabled')
-        
-        # enable or disable the nonce entry and button
-        if NewAlgoClass == algorithms.ChaCha20:
-            self.nonce_text.config(state='normal')
-            self.randnoncebtn.config(state='normal')
-            self.incnonce_btn.config(state='normal')
-            self.decnonce_btn.config(state='normal')
-        else:
-            self.nonce_text.config(state='disabled')
-            self.randnoncebtn.config(state='disabled')
-            self.incnonce_btn.config(state='disabled')
-            self.decnonce_btn.config(state='disabled')
-            
-        
         # if a key exists, instantiate the algorithm with the key
         if self._key_exists():
-            if self.algoclass == algorithms.ChaCha20:
-                if self._nonce_exists():
-                    self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()), bytes.fromhex(self._nonce_wrangle()))
-                else:
-                    return
-            else:
-                self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
+            self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
             self.converter.set_algorithm(self.algo)
             # DEBUG
             self.debug_refreshactualkey()
             self.process_img()
             self.set_img()
-                   
-    def algorithm_update(self, *args):
-        event = None
-        if args:
-            event = args[0]
-        
-        # check the textbox modified flag
-        if self.key_text.edit_modified() == True:
-            self.key_text.edit_modified(False)
-        else:
-            if event:
-                if 'text' in event.widget.widgetName:
-                    return
-        print(args[0])
-        
-        if self.algorithmvar.get() == 'None':
-            self.randkeysize_combobox.config(values=[])
-            self.randkeysize_combobox.set('')
-            self.process_img()
-            self.set_img()
-            return
-        
-        
-        
-        # TODO based on the algorithmvar, use appropriate block sizes, key sizes, etc
-        AlgClass = self.algodict[self.algorithmvar.get()]
-        
-        # update keysizes
-        key_sizes = list(AlgClass.key_sizes)
-        key_sizes.sort() # sort values ascending
-        key_sizes_str = [str(size) for size in key_sizes]
-        self.randkeysize_combobox.config(values=key_sizes_str)
-        # self.randkeysize_combobox.current(0) # select first value
-        
-        
-        if issubclass(AlgClass, BlockCipherAlgorithm):
-            """handle block cipher settings configuration"""
-        else:
-            """disable block cipher settings"""
-        
-        if self.key_text.count(1.0, tk.END, 'chars')[0] > 1:
-            key = self.key_text.get(1.0, tk.END)
-            key = key.replace('\n','')
-            if not key:
-                return
-            if len(key) % 2 != 0:
-                key = '0'+key
-            key = bytes.fromhex(str(key))
-            # limit size to maximum key size
-            if 8*len(key) > max(key_sizes):
-                key = bytes.fromhex(hex(int(key.hex(), 16) & (2**max(key_sizes)-1))[2:])
-                self.randkeysize_combobox.current(len(key_sizes)-1)
-            elif 8*len(key) not in key_sizes:
-                i = 0
-                if 8*len(key) < min(key_sizes):
-                    appropriate_size = min(key_sizes)
-                else:
-                    for size in key_sizes:
-                        if 8*len(key) < size:
-                            i += 1
-                            continue
-                        appropriate_size = size
-                        break
-                # pad with zeros
-                n_pad_bytes = appropriate_size//8 - len(key)
-                key = bytearray(key)
-                key = list(key)
-                key = n_pad_bytes*[0] + key
-                key = bytes(key)
-                self.randkeysize_combobox.current(i)
-            algo = AlgClass(key)
-            self.converter.set_algorithm(algo)
-            self.process_img()
-        self.set_img()
     
     def debug_refreshactualkey(self, *args):
         if self._key_exists():
             self.debug_actualkeyvar.set(self._key_wrangle())
-    
-    def _nonce_wrangle(self) -> str:
-        """ returns a nonce from the text """
-        noncestr = self.nonce_text.get(1.0, tk.END)
-        noncesize = 32 # 16-byte hex value, length in chars
-        
-        # remove newlines
-        noncestr = noncestr.replace('\n', '')
-        
-        if noncestr == '':
-            return noncesize*'0'
 
-        # insert a 0 if the length of the nonce is odd
-        if len(noncestr) % 2 != 0:
-            noncestr = '0'+noncestr
-        
-        # attempt to interpret as hex value
-        try:
-            nonce = bytes.fromhex(noncestr)
-        except ValueError:
-            # strip all whitespace
-            noncestr = re.sub('[\s*]', '', noncestr)
-            # convert all nonhex chars to their hex representations
-            newnoncestr = list(noncestr)
-            nonhexiter = re.finditer('[^a-fA-F0-9]', noncestr)
-            # create a list of the indices for each match
-            matchind = [m.start() for m in nonhexiter]
-            # reverse it so we can modify the noncestr from end to beginning, preserving validity of lower indices
-            matchind.reverse()
-            for i in matchind:
-                hexstr = hex(ord(noncestr[i]))[2:] # remove the leading 0x
-                # insert a 0 if the length is odd
-                if len(hexstr) % 2 != 0:
-                    hexstr = '0' + hexstr
-                
-                # remove the non-hex value from the newnoncestr
-                newnoncestr.pop(i)
-                # insert the hex value in place of the non-hex value
-                newnoncestr.insert(i, hexstr)
-            # convert the newnoncestr back to a string
-            noncestr = ''.join(newnoncestr)
-        
-        if len(noncestr) < noncesize:
-            # prepend zeros
-            return '0'*(noncesize - len(noncestr)) + noncestr
-        elif len(noncestr) > noncesize:
-            return noncestr[(len(noncestr) - noncesize):]
-        else:
-            return noncestr
-    
     def _key_wrangle(self) -> str:
         """ returns a key from the text """
         keystr = self.key_text.get(1.0, tk.END)
@@ -604,11 +363,7 @@ class App(tk.Tk):
     def _key_exists(self):
         """ returns true if text exists in the key_text widget """
         return (self.key_text.count(1.0, tk.END, 'chars')[0] > 1)
-    
-    def _nonce_exists(self):
-        """ returns true if text exists in the nonce_text widget """
-        return (self.nonce_text.count(1.0, tk.END, 'chars')[0] > 1)
-        
+       
 if __name__ == '__main__':
     app = App()
     app.mainloop()
