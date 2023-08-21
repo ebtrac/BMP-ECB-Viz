@@ -1,0 +1,19 @@
+$ openssl enc -ciphers | tr ' ' '\n' | grep -i ecb
+
+-aes-128-ecb
+-aes-192-ecb
+-aes-256-ecb
+-aria-128-ecb
+-aria-192-ecb
+-aria-256-ecb
+-bf-ecb
+-camellia-128-ecb
+-camellia-192-ecb
+-camellia-256-ecb
+-cast5-ecb
+-des-ecb
+-des-ede-ecb
+-des-ede3-ecb
+-rc2-ecb
+-seed-ecb
+-sm4-ecb
