@@ -93,7 +93,7 @@ class App(tk.Tk):
         self.key_text.grid(row=2,column=0, columnspan=3, padx=5, pady=5, sticky='ns')
         
         # random key generator button
-        randkeybtn = ttk.Button(self.control_frame, text='Random Key', command=self.generate_random_key, state='disabled')
+        self.randkeybtn = ttk.Button(self.control_frame, text='Random Key', command=self.generate_random_key, state='disabled')
         # random key size combobox
         randkeysizelbl = ttk.Label(self.control_frame, text='Key Size (bits)')
         self.keysizevar = tk.StringVar()
@@ -104,13 +104,13 @@ class App(tk.Tk):
         # place random key generator controls and labels
         randkeysizelbl.grid(row=3, column=0, sticky='nw')
         self.keysize_combobox.grid(row=3,column=1, sticky='nw')
-        randkeybtn.grid(row=3, column=2, )
+        self.randkeybtn.grid(row=3, column=2, )
         
         # place increment and decrement key buttons
-        inckey_btn = ttk.Button(self.control_frame, text='Key++', command=self.increment_key, state='disabled')
-        deckey_btn = ttk.Button(self.control_frame, text='Key--', command=self.decrement_key, state='disabled')
-        inckey_btn.grid(row=4, column=0, sticky='nw')
-        deckey_btn.grid(row=4, column=1, sticky='nw')
+        self.inckey_btn = ttk.Button(self.control_frame, text='Key++', command=self.increment_key, state='disabled')
+        self.deckey_btn = ttk.Button(self.control_frame, text='Key--', command=self.decrement_key, state='disabled')
+        self.inckey_btn.grid(row=4, column=0, sticky='nw')
+        self.deckey_btn.grid(row=4, column=1, sticky='nw')
 
         # place popout preview controls
         self.popout_btn = ttk.Button(self.control_frame, text='Popout Preview', command=self.create_image_popup, state='disabled')
@@ -139,19 +139,45 @@ class App(tk.Tk):
         self.picture_frame.grid(row=0,column=1, sticky='nsew')
      
     def create_image_popup(self, *args):
+        self.popout_btn.config(state='disabled')
         self.popup = tk.Toplevel()
         self.popup.title('Image Viewer')
         self.popup_photo = ImageTk.PhotoImage(self.pil_img_out)
         # create a label to show the image
         self.popup_label = tk.Label(self.popup, image=self.popup_photo)
-        self.popup_label.pack()
+        self.popup_label.pack(expand=True, fill='both')
         
         self.popup_label.image = self.popup_photo
         
         self.popup.update_idletasks()
         # centers the image on the screen
         self.popup.geometry(f"+{self.popup.winfo_screenwidth() // 2 - self.popup.winfo_width() // 2}+{self.popup.winfo_screenheight() // 2 - self.popup.winfo_height() // 2}")
+        # disable resizing because it causes inflation
+        # self.popup.bind('<Configure>', self.resizepopup)
+        
+        self.popup.protocol("WM_DELETE_WINDOW", self.close_image_popup)
 
+    def close_image_popup(self, *args):
+        self.popout_btn.config(state='normal')
+        self.popup.destroy()
+
+    def resizepopup(self, event):
+        new_w,new_h = event.width, event.height
+        print('resizing')
+        original_w, original_h = self.pil_img_out.size
+        aspect_ratio = original_w/original_h
+        if aspect_ratio > 1:
+            # landscape
+            new_h = round(new_w/aspect_ratio)
+        else:
+            # portrait
+            new_w = round(new_h * aspect_ratio)
+        self.popup.unbind('<Configure>')
+        self.popup_photo = ImageTk.PhotoImage(self.pil_img_out.resize((new_w, new_h)))
+        self.popup_label.config(image=self.popup_photo)
+        self.popup_label.image = self.popup_photo
+        self.popup.bind('<Configure>', self.resizepopup)
+        
         
     def select_file(self, *args):
         filetypes = (
@@ -314,15 +340,15 @@ class App(tk.Tk):
         if new_algo == 'None':
             self.keysize_combobox.config(values=[])
             self.keysize_combobox.set('')
-            
+            self.algoclass = None
             # disable all controls except algorithm combobox
             ctlstate = 'disabled'
             self.key_text.config(state=ctlstate)
             self.keysize_combobox.config(state=ctlstate)
-            for child in self.control_frame.winfo_children():
-                if 'button' in child.widgetName:
-                    child.config(state=ctlstate)
-
+            self.deckey_btn.config(state=ctlstate)
+            self.inckey_btn.config(state=ctlstate)
+            self.randkeybtn.config(state=ctlstate)
+            
             self.process_img()
             self.set_img()
             return
@@ -331,9 +357,9 @@ class App(tk.Tk):
         ctlstate = 'normal'
         self.keysize_combobox.config(state='readonly')
         self.key_text.config(state=ctlstate)
-        for child in self.control_frame.winfo_children():
-            if 'button' in child.widgetName:
-                child.config(state=ctlstate)
+        self.deckey_btn.config(state=ctlstate)
+        self.inckey_btn.config(state=ctlstate)
+        self.randkeybtn.config(state=ctlstate)
         
         NewAlgoClass = self.algodict[new_algo]
         
@@ -348,6 +374,8 @@ class App(tk.Tk):
         key_sizes = list(NewAlgoClass.key_sizes)
         key_sizes.sort() # sort values ascending
         key_sizes_str = [str(size) for size in key_sizes]
+        if NewAlgoClass == algorithms.AES:
+            key_sizes_str.pop() # remove 512 from the list of sizes. not supported for ECB mode
         self.keysize_combobox.config(values=key_sizes_str)
         # load keysize setting for this algorithm
         self.keysize_combobox.current(self.keysize_settings[new_algo])
