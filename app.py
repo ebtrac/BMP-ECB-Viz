@@ -14,10 +14,10 @@ class App(tk.Tk):
         self.resizable(1,1)
         self.title('BMP to ECB')
         self.geometry('800x400')
-        
+                
         # instantiate the BMP2ECB class
         self.converter = BMP2ECB()
-        
+
         # algorithms and their associated classes
         self.algodict = dict()
         for cls in BlockCipherAlgorithm.__subclasses__():
@@ -112,6 +112,10 @@ class App(tk.Tk):
         inckey_btn.grid(row=4, column=0, sticky='nw')
         deckey_btn.grid(row=4, column=1, sticky='nw')
 
+        # place popout preview controls
+        self.popout_btn = ttk.Button(self.control_frame, text='Popout Preview', command=self.create_image_popup, state='disabled')
+        self.popout_btn.grid(row=50, column=0, sticky='nw', pady=10)
+
         # DEBUG place debug controls
         self.debug_actualkeyvar = tk.StringVar()
         ttk.Label(self.control_frame, text='Actual Key').grid(row=9, column=0, sticky='nw')
@@ -133,6 +137,21 @@ class App(tk.Tk):
         
         # place picture frame
         self.picture_frame.grid(row=0,column=1, sticky='nsew')
+     
+    def create_image_popup(self, *args):
+        self.popup = tk.Toplevel()
+        self.popup.title('Image Viewer')
+        self.popup_photo = ImageTk.PhotoImage(self.pil_img_out)
+        # create a label to show the image
+        self.popup_label = tk.Label(self.popup, image=self.popup_photo)
+        self.popup_label.pack()
+        
+        self.popup_label.image = self.popup_photo
+        
+        self.popup.update_idletasks()
+        # centers the image on the screen
+        self.popup.geometry(f"+{self.popup.winfo_screenwidth() // 2 - self.popup.winfo_width() // 2}+{self.popup.winfo_screenheight() // 2 - self.popup.winfo_height() // 2}")
+
         
     def select_file(self, *args):
         filetypes = (
@@ -160,6 +179,8 @@ class App(tk.Tk):
         
         # enable algorithm combobox
         self.algorithm_combobox.config(state='readonly')
+        # enable image popout button
+        self.popout_btn.config(state='normal')
         
         # show the image
         self.set_img()
@@ -231,6 +252,12 @@ class App(tk.Tk):
     
     def set_img(self):
         """ set the processed image to the canvas """
+        self.popup_photo = ImageTk.PhotoImage(self.pil_img_out)
+        try:
+            self.popup_label.config(image=self.popup_photo)
+            self.popup_label.image = self.popup_photo
+        except:
+            pass
         resized_img = self.pil_img_out.resize((self.canvas.winfo_width(), self.canvas.winfo_height()))
         self.img = ImageTk.PhotoImage(image=resized_img)
         self.bg = self.canvas.create_image(0,0,anchor=tk.NW, image=self.img)
