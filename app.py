@@ -28,11 +28,16 @@ class App(tk.Tk):
         # remove ARC4 because it doesnt support ECB
         self.algodict.pop('ARC4')
         # remove ChaCha20 because it doesnt support ECB
-        self.algodict.pop('ChaCha20')
+        self.algodict.pop('ChaCha20')    
+        # remove redundant entries of AES
+        self.algodict.pop('AES128')
+        self.algodict.pop('AES256')
         
         # contains the selected keysizes for each of the algorithms
         self.keysize_settings = dict()
-               
+        for key in self.algodict.keys():
+            # initialize settings with all selections being the first in list of possible key sizes
+            self.keysize_settings[key] = 0
         
         self.algo = None
         self.algoclass = None
@@ -92,11 +97,13 @@ class App(tk.Tk):
         # random key size combobox
         randkeysizelbl = ttk.Label(self.control_frame, text='Key Size (bits)')
         self.keysizevar = tk.StringVar()
-        self.randkeysize_combobox = ttk.Combobox(self.control_frame, textvariable=self.keysizevar, state='disabled')
+        self.keysize_combobox = ttk.Combobox(self.control_frame, textvariable=self.keysizevar, state='disabled')
+        
+        self.keysize_combobox.bind('<<ComboboxSelected>>', self.keysize_changed)
         
         # place random key generator controls and labels
         randkeysizelbl.grid(row=3, column=0, sticky='nw')
-        self.randkeysize_combobox.grid(row=3,column=1, sticky='nw')
+        self.keysize_combobox.grid(row=3,column=1, sticky='nw')
         randkeybtn.grid(row=3, column=2, )
         
         # place increment and decrement key buttons
@@ -111,7 +118,7 @@ class App(tk.Tk):
         debug_actualkey_entry = ttk.Entry(self.control_frame, textvariable=self.debug_actualkeyvar, width=48, state='disabled')
         debug_refreshactualkey = ttk.Button(self.control_frame, text='refresh actual key', command=self.debug_refreshactualkey, state='disabled')
         debug_actualkey_entry.grid(row=10, column=0, columnspan=3, sticky='nw')
-        debug_refreshactualkey.grid(row=11, column=0)
+        # debug_refreshactualkey.grid(row=11, column=0)
         
         # place the control frame
         self.control_frame.grid(row=0, column=0, sticky='nsw')
@@ -185,7 +192,12 @@ class App(tk.Tk):
                 newkey = '0'*(len(key) - len(newkey)) + newkey
             self.key_text.delete(1.0, tk.END)
             self.key_text.insert(1.0, newkey)
-
+        else:
+            keysize = int(self.keysize_combobox.get()) // 8
+            newkey = '0'*keysize
+            self.key_text.delete(1.0, tk.END)
+            self.key_text.insert(1.0, newkey)
+            
     def decrement_key(self, *args):
         if self._key_exists():
             key = self._key_wrangle()
@@ -197,6 +209,11 @@ class App(tk.Tk):
                 newkey = newkey[1:]
             elif len(newkey) < len(key):
                 newkey = '0'*(len(key) - len(newkey)) + newkey
+            self.key_text.delete(1.0, tk.END)
+            self.key_text.insert(1.0, newkey)
+        else:
+            keysize = int(self.keysize_combobox.get()) // 8
+            newkey = '0'*keysize
             self.key_text.delete(1.0, tk.END)
             self.key_text.insert(1.0, newkey)
 
@@ -224,6 +241,7 @@ class App(tk.Tk):
             self.pil_img_out = self.pil_img_in.copy()
             return
         
+        # print('image processed', self.converter.algorithm.key.hex())
         outputfilebytes = self.converter.convert(self.inputfilebytes)
         self.pil_img_out = Image.frombytes(mode='RGB', size=self.pil_img_in.size, data=outputfilebytes).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     
@@ -249,17 +267,31 @@ class App(tk.Tk):
             # DEBUG
             self.debug_refreshactualkey()
     
+    def keysize_changed(self, *args):
+        # update keysize setting for this algorithm
+        current_algo = self.algorithmvar.get()
+        self.keysize_settings[current_algo] = self.keysize_combobox.current()
+        
+          # if a key exists, instantiate the algorithm with the key
+        if self._key_exists():
+            self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
+            self.converter.set_algorithm(self.algo)
+            self.process_img()
+            self.set_img()
+            # DEBUG
+            self.debug_refreshactualkey()
+    
     def algorithm_combobox_changed(self, *args):
         """fires when the algorithm combobox has been selected/modified"""
         new_algo = self.algorithmvar.get()
         if new_algo == 'None':
-            self.randkeysize_combobox.config(values=[])
-            self.randkeysize_combobox.set('')
+            self.keysize_combobox.config(values=[])
+            self.keysize_combobox.set('')
             
             # disable all controls except algorithm combobox
             ctlstate = 'disabled'
             self.key_text.config(state=ctlstate)
-            self.randkeysize_combobox.config(state=ctlstate)
+            self.keysize_combobox.config(state=ctlstate)
             for child in self.control_frame.winfo_children():
                 if 'button' in child.widgetName:
                     child.config(state=ctlstate)
@@ -270,7 +302,7 @@ class App(tk.Tk):
         
         # enable all controls
         ctlstate = 'normal'
-        self.randkeysize_combobox.config(state='readonly')
+        self.keysize_combobox.config(state='readonly')
         self.key_text.config(state=ctlstate)
         for child in self.control_frame.winfo_children():
             if 'button' in child.widgetName:
@@ -289,9 +321,10 @@ class App(tk.Tk):
         key_sizes = list(NewAlgoClass.key_sizes)
         key_sizes.sort() # sort values ascending
         key_sizes_str = [str(size) for size in key_sizes]
-        self.randkeysize_combobox.config(values=key_sizes_str)
-        # self.randkeysize_combobox.current(0) # select first value
-        
+        self.keysize_combobox.config(values=key_sizes_str)
+        # load keysize setting for this algorithm
+        self.keysize_combobox.current(self.keysize_settings[new_algo])
+                
         # if a key exists, instantiate the algorithm with the key
         if self._key_exists():
             self.algo = self.algoclass(bytes.fromhex(self._key_wrangle()))
